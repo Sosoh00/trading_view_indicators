@@ -1,0 +1,169 @@
+//@version=6
+indicator("Boline (Sosoh)", overlay=true)
+
+// ────────────────────────────────
+// SETTINGS
+// ────────────────────────────────
+// Visibility toggles
+showPrevLines = input.bool(true, "Show Previous Lines")
+showPrevBoxes = input.bool(true, "Show Previous Boxes")
+
+// 1300 line (default 13:00 SAST)
+StartHour_1300   = input.int(13, "Line1 Start Hour (SAST)", minval=0, maxval=23)
+StartMinute_1300 = input.int(0,  "Line1 Start Minute (SAST)", minval=0, maxval=59)
+LineColor_1300   = input.color(color.new(color.rgb(9,121,226), 0), "Line 1 Color")
+LineWidth_1300   = input.int(2, "Line 1 Width", minval=1, maxval=5)
+
+// 1400 line (default 14:00 SAST)
+StartHour_1400   = input.int(14, "Line2 Start Hour (SAST)", minval=0, maxval=23)
+StartMinute_1400 = input.int(0,  "Line2 Start Minute (SAST)", minval=0, maxval=59)
+LineColor_1400   = input.color(color.new(color.rgb(226,34,9), 0), "Line 2 Color")
+LineWidth_1400   = input.int(2, "Line 2 Width", minval=1, maxval=5)
+
+// Box1 settings (default 13:00 → 14:00)
+Box1StartHour   = input.int(13, "Box1 Start Hour (SAST)", minval=0, maxval=23)
+Box1StartMinute = input.int(0,  "Box1 Start Minute (SAST)", minval=0, maxval=59)
+Box1EndHour     = input.int(14, "Box1 End Hour (SAST)",   minval=0, maxval=23)
+Box1EndMinute   = input.int(0,  "Box1 End Minute (SAST)", minval=0, maxval=59)
+Box1Color       = input.color(color.new(color.rgb(9,121,226), 80), "Box 1 Fill")
+
+// Box2 settings (default 14:00 → 15:00)
+Box2StartHour   = input.int(14, "Box2 Start Hour (SAST)", minval=0, maxval=23)
+Box2StartMinute = input.int(0,  "Box2 Start Minute (SAST)", minval=0, maxval=59)
+Box2EndHour     = input.int(15, "Box2 End Hour (SAST)",   minval=0, maxval=23)
+Box2EndMinute   = input.int(0,  "Box2 End Minute (SAST)", minval=0, maxval=59)
+Box2Color       = input.color(color.new(color.rgb(226,34,9), 80), "Box 2 Fill")
+
+// ────────────────────────────────
+// VARIABLES / HANDLES
+// ────────────────────────────────
+var line line1300 = na
+var line line1400 = na
+var float price1300 = na
+var float price1400 = na
+var int bar1300 = na
+var int bar1400 = na
+
+var box box1 = na
+var box box2 = na
+var float box1_high = na
+var float box1_low  = na
+var float box2_high = na
+var float box2_low  = na
+var int box1_start_bar = na
+var int box2_start_bar = na
+
+// ────────────────────────────────
+// TIME HELPERS
+// ────────────────────────────────
+hr  = hour(time, "Africa/Johannesburg")
+min = minute(time, "Africa/Johannesburg")
+
+isStartLine1300 = hr == StartHour_1300 and min == StartMinute_1300 and timeframe.isminutes and timeframe.multiplier == 5
+isStartLine1400 = hr == StartHour_1400 and min == StartMinute_1400 and timeframe.isminutes and timeframe.multiplier == 5
+
+isBox1Start = hr == Box1StartHour and min == Box1StartMinute and timeframe.isminutes and timeframe.multiplier == 5
+isBox1End   = hr == Box1EndHour and min == Box1EndMinute and timeframe.isminutes and timeframe.multiplier == 5
+
+isBox2Start = hr == Box2StartHour and min == Box2StartMinute and timeframe.isminutes and timeframe.multiplier == 5
+isBox2End   = hr == Box2EndHour and min == Box2EndMinute and timeframe.isminutes and timeframe.multiplier == 5
+
+// ────────────────────────────────
+// CAPTURE LINES (open price at start candle)
+// ────────────────────────────────
+if isStartLine1300
+    price1300 := open
+    bar1300 := bar_index
+    if not showPrevLines
+        line.delete(line1300)
+    line1300 := na
+
+if isStartLine1400
+    price1400 := open
+    bar1400 := bar_index
+    if not showPrevLines
+        line.delete(line1400)
+    line1400 := na
+
+// ────────────────────────────────
+// DRAW / UPDATE LINES (single-line creations)
+// ────────────────────────────────
+if not na(price1300)
+
+    if na(line1300)
+        line1300 := line.new(x1=bar1300, y1=price1300, x2=bar_index + 30, y2=price1300, xloc=xloc.bar_index, extend=extend.none, color=LineColor_1300, width=LineWidth_1300)
+    else
+        line.set_xy2(line1300, x=bar_index + 30, y=price1300)
+
+if not na(price1400)
+    if na(line1400)
+        line1400 := line.new(x1=bar1400, y1=price1400, x2=bar_index + 30, y2=price1400, xloc=xloc.bar_index, extend=extend.none, color=LineColor_1400, width=LineWidth_1400)
+    else
+        line.set_xy2(line1400, x=bar_index + 18, y=price1400)
+
+// ────────────────────────────────
+// BOX 1: collect highs/lows then create (single-line creation)
+// ────────────────────────────────
+if isBox1Start
+    if not showPrevBoxes
+        box.delete(box1)
+    box1 := na
+    box1_high := high
+    box1_low := low
+    box1_start_bar := bar_index
+
+// while inside box1 session update high/low
+if (time >= timestamp("Africa/Johannesburg", year(time), month(time), dayofmonth(time), Box1StartHour, Box1StartMinute)) and (time < timestamp("Africa/Johannesburg", year(time), month(time), dayofmonth(time), Box1EndHour, Box1EndMinute))
+    box1_high := na(box1_high) ? high : math.max(box1_high, high)
+    box1_low  := na(box1_low)  ? low  : math.min(box1_low, low)
+    // extend the in-progress box for visual feedback
+    if not na(box1_start_bar)
+        if na(box1)
+            // single-line creation as requested
+            box1 := box.new(left=box1_start_bar, top=box1_high, right=bar_index, bottom=box1_low, xloc=xloc.bar_index, extend=extend.none, bgcolor=Box1Color, border_color=color.new(Box1Color, 0))
+        else
+            box.set_right(box1, bar_index)
+            box.set_top(box1, box1_high)
+            box.set_bottom(box1, box1_low)
+
+// finalize/create at end (ensure the final bar is included)
+if isBox1End
+    if na(box1)
+        box1 := box.new(left=box1_start_bar, top=box1_high, right=bar_index, bottom=box1_low, xloc=xloc.bar_index, extend=extend.none, bgcolor=Box1Color, border_color=color.new(Box1Color, 0))
+    else
+        box.set_right(box1, bar_index)
+        box.set_top(box1, box1_high)
+        box.set_bottom(box1, box1_low)
+
+// ────────────────────────────────
+// BOX 2: collect highs/lows then create (single-line creation)
+// ────────────────────────────────
+if isBox2Start
+    if not showPrevBoxes
+        box.delete(box2)
+    box2 := na
+    box2_high := high
+    box2_low := low
+    box2_start_bar := bar_index
+
+// while inside box2 session update high/low
+if (time >= timestamp("Africa/Johannesburg", year(time), month(time), dayofmonth(time), Box2StartHour, Box2StartMinute)) and (time < timestamp("Africa/Johannesburg", year(time), month(time), dayofmonth(time), Box2EndHour, Box2EndMinute))
+    box2_high := na(box2_high) ? high : math.max(box2_high, high)
+    box2_low  := na(box2_low)  ? low  : math.min(box2_low, low)
+    if not na(box2_start_bar)
+        if na(box2)
+            // single-line creation as requested
+            box2 := box.new(left=box2_start_bar, top=box2_high, right=bar_index, bottom=box2_low, xloc=xloc.bar_index, extend=extend.none, bgcolor=Box2Color, border_color=color.new(Box2Color, 0))
+        else
+            box.set_right(box2, bar_index)
+            box.set_top(box2, box2_high)
+            box.set_bottom(box2, box2_low)
+
+// finalize/create at end (ensure the final bar is included)
+if isBox2End
+    if na(box2)
+        box2 := box.new(left=box2_start_bar, top=box2_high, right=bar_index, bottom=box2_low, xloc=xloc.bar_index, extend=extend.none, bgcolor=Box2Color, border_color=color.new(Box2Color, 0))
+    else
+        box.set_right(box2, bar_index)
+        box.set_top(box2, box2_high)
+        box.set_bottom(box2, box2_low)
